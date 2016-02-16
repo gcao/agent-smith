@@ -1,5 +1,6 @@
 require 'bunny'
 require 'json'
+require 'securerandom'
 
 SERVER   = ENV['AMQP_SERVER']   || 'localhost'
 USERNAME = ENV['AMQP_USERNAME'] || 'guest'
@@ -20,11 +21,8 @@ ch.queue("requests", durable: true).subscribe do |delivery_info, metadata, paylo
     puts "Check disk space request is received"
     resp = ch.queue("tasks", durable: true)
     message = {
-      #id: uuid.v4() #TODO: generate a uuid for each task
-      #source: {
-        reply_to: parsed["reply_to"],
-        room: parsed["room"],
-      #},
+      id: SecureRandom.uuid,
+      source: parsed["source"],
       type: 'check-disk-space',
       server: 'TODO',
     }
@@ -34,14 +32,12 @@ end
 
 ch.queue("tasks", durable: true).subscribe do |delivery_info, metadata, payload|
   puts payload
-
   parsed = JSON.parse payload
 
   resp = ch.queue("responses", durable: true)
   message = {
+    source: parsed['source'],
     content: `df`,
-    reply_to: parsed["reply_to"],
-    room: parsed["room"]
   }
   resp.publish(message.to_json, routing_key: 'responses')
 end
