@@ -2,6 +2,23 @@ require 'bunny'
 require 'json'
 require 'securerandom'
 
+ABOUT_ME = {
+  name: "Mr. Smith",
+  version: "0.1.0",
+  description: "",
+  host: `hostname`.strip,
+  runningSince: Time.now,
+}
+
+WHAT_CAN_I_DO = {
+  requests: [
+    { message: /check disk space/i.inspect }
+  ],
+  tasks: [
+    { type: "check-disk-space" }
+  ],
+}
+
 SERVER   = ENV['AMQP_SERVER']   || 'localhost'
 USERNAME = ENV['AMQP_USERNAME'] || 'guest'
 PASSWORD = ENV['AMQP_PASSWORD'] || 'guest'
@@ -13,33 +30,55 @@ puts "Connected to #{SERVER} as #{USERNAME}"
 
 ch = conn.create_channel
 
-ch.queue("requests", durable: true).subscribe do |delivery_info, metadata, payload|
+#requests_x = ch.fanout("requests-x", durable: true)
+requests = ch.queue("requests", "auto-delete" => true, arguments: {'x-message-ttl' => 30000, 'x-dead-letter-exchange' => 'dead-requests-x'})
+#requests.bind(requests_x)
+
+tasks_x = ch.headers("tasks-x", durable: true)
+tasks = ch.queue("tasks", "auto-delete" => true, arguments: {'x-message-ttl' => 60000, 'x-dead-letter-exchange' => 'dead-tasks-x'})
+tasks.bind(tasks_x)
+
+#responses_x = ch.fanout("responses-x", durable: true)
+responses = ch.queue("responses", "auto-delete" => true, arguments: {'x-message-ttl' => 60000})
+#responses.bind(responses_x)
+
+requests.subscribe do |delivery_info, metadata, payload|
   parsed = JSON.parse payload
 
   if parsed["message"] =~ /check disk space/i
     puts "=" * 80
     puts "Check disk space request is received"
-    resp = ch.queue("tasks", durable: true)
     message = {
       id: SecureRandom.uuid,
       source: parsed["source"],
       type: 'check-disk-space',
       server: 'TODO',
     }
-    resp.publish(message.to_json, routing_key: 'tasks')
+    tasks_x.publish(message.to_json, routing_key: 'tasks')
+  else
+    puts "Rejected: #{parsed["message"]}"
+    #ch.reject delivery_info.delivery_tag, true
   end
+
+  puts "Done with the request"
 end
 
-ch.queue("tasks", durable: true).subscribe do |delivery_info, metadata, payload|
+tasks.subscribe do |delivery_info, metadata, payload|
   puts payload
   parsed = JSON.parse payload
 
-  resp = ch.queue("responses", durable: true)
-  message = {
-    source: parsed['source'],
-    content: `df`,
-  }
-  resp.publish(message.to_json, routing_key: 'responses')
+  if parsed["type"] == "check-disk-space"
+    message = {
+      source: parsed['source'],
+      content: `df`,
+    }
+    responses.publish(message.to_json, routing_key: 'responses')
+  else
+    puts "Rejected: #{parsed["type"]}"
+    #ch.reject delivery_info.delivery_tag, true
+  end
+
+  puts "Done with the task"
 end
 
 sleep 1 while true
