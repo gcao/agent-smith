@@ -42,7 +42,7 @@ tasks.bind(tasks_x)
 responses = ch.queue("responses", "auto-delete" => true, arguments: {'x-message-ttl' => 60000})
 #responses.bind(responses_x)
 
-requests.subscribe do |delivery_info, metadata, payload|
+requests.subscribe(manual_ack: true) do |delivery_info, metadata, payload|
   parsed = JSON.parse payload
 
   if parsed["message"] =~ /check disk space/i
@@ -55,15 +55,16 @@ requests.subscribe do |delivery_info, metadata, payload|
       server: 'TODO',
     }
     tasks_x.publish(message.to_json, routing_key: 'tasks')
+    ch.ack delivery_info.delivery_tag, false
   else
     puts "Rejected: #{parsed["message"]}"
-    #ch.reject delivery_info.delivery_tag, true
+    ch.reject delivery_info.delivery_tag, true
   end
 
   puts "Done with the request"
 end
 
-tasks.subscribe do |delivery_info, metadata, payload|
+tasks.subscribe(manual_ack: true) do |delivery_info, metadata, payload|
   puts payload
   parsed = JSON.parse payload
 
@@ -73,9 +74,10 @@ tasks.subscribe do |delivery_info, metadata, payload|
       content: `df`,
     }
     responses.publish(message.to_json, routing_key: 'responses')
+    ch.ack delivery_info.delivery_tag, false
   else
     puts "Rejected: #{parsed["type"]}"
-    #ch.reject delivery_info.delivery_tag, true
+    ch.reject delivery_info.delivery_tag, true
   end
 
   puts "Done with the task"
