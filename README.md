@@ -1,4 +1,4 @@
-# Mr. Smith
+# Agent Smith
 
 An agent script created in Ruby
 

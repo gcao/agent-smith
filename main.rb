@@ -8,7 +8,7 @@ ENV["STOMP_USERNAME"] ||= "admin"
 ENV["STOMP_PASSWORD"] ||= "admin"
 
 ABOUT_ME = {
-  name: "Mr. Smith",
+  name: "Agent Smith",
   version: "0.1.0",
   description: "",
   host: `hostname`.strip,
